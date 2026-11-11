@@ -119,7 +119,7 @@ struct ShortcutStore {
     // MARK: - 喝水
 
     func waterGoal() -> Int {
-        let goal = defaults?.integer(forKey: ShortcutStore.waterGoalKey)
+        let goal = defaults?.integer(forKey: ShortcutStore.waterGoalKey) ?? 0
         return goal > 0 ? goal : 8
     }
 
