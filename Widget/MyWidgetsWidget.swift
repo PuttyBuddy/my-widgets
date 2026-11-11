@@ -7,11 +7,12 @@ struct LauncherEntry: TimelineEntry {
     let date: Date
     let shortcuts: [Shortcut]
     let style: WidgetStyle
+    let shape: WidgetShape
 }
 
 struct LauncherProvider: TimelineProvider {
     func placeholder(in context: Context) -> LauncherEntry {
-        LauncherEntry(date: .now, shortcuts: Shortcut.presets, style: .glass)
+        LauncherEntry(date: .now, shortcuts: Shortcut.presets, style: .glass, shape: .roundedSquare)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (LauncherEntry) -> Void) {
@@ -25,7 +26,8 @@ struct LauncherProvider: TimelineProvider {
     private func currentEntry() -> LauncherEntry {
         LauncherEntry(date: .now,
                       shortcuts: ShortcutStore.shared.loadShortcuts(),
-                      style: ShortcutStore.shared.loadStyle())
+                      style: ShortcutStore.shared.loadStyle(),
+                      shape: ShortcutStore.shared.loadShape())
     }
 }
 
@@ -37,7 +39,7 @@ struct LauncherWidget: Widget {
             LauncherEntryView(entry: entry)
         }
         .configurationDisplayName("快速启动")
-        .description("点击图标直接打开对应 App。在主 App 里编辑快捷方式和风格。")
+        .description("点击图标直接打开对应 App。在主 App 里编辑快捷方式、图标和风格。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryCircular])
     }
 }
@@ -75,14 +77,14 @@ struct LauncherEntryView: View {
     private var content: some View {
         switch family {
         case .systemSmall:
-            LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(4)),
-                         columns: 2, textColor: textColor, emojiSize: 26)
+            LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(6)),
+                         columns: 3, shape: entry.shape, iconSize: 22)
         case .systemMedium:
-            LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(8)),
-                         columns: 4, textColor: textColor, emojiSize: 24)
+            LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(10)),
+                         columns: 5, shape: entry.shape, iconSize: 28)
         case .systemLarge:
-            LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(12)),
-                         columns: 4, textColor: textColor, emojiSize: 28)
+            LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(21)),
+                         columns: 7, shape: entry.shape, iconSize: 20)
         default:
             accessoryView
         }
@@ -92,18 +94,29 @@ struct LauncherEntryView: View {
     @ViewBuilder
     private var accessoryView: some View {
         if let first = entry.shortcuts.first {
-            if let url = first.url {
-                Link(destination: url) {
+            Group {
+                if let symbolName = first.symbolName {
+                    Image(systemName: symbolName)
+                        .font(.system(size: 20))
+                        .foregroundStyle(textColor)
+                } else {
                     Text(first.glyph)
-                        .font(.system(size: 22))
+                        .font(.system(size: 20))
                 }
-            } else {
-                Text(first.glyph)
-                    .font(.system(size: 22))
+            }
+            .overlay {
+                // 与主网格一致：iOS 26 需要 Link 垫在透明层上才能跳转
+                if let url = first.url {
+                    Link(destination: url) {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .contentShape(Rectangle())
+                    }
+                }
             }
         } else {
             Text("🚀")
-                .font(.system(size: 22))
+                .font(.system(size: 20))
         }
     }
 }

@@ -1,53 +1,75 @@
 import SwiftUI
 
-/// 组件里的一格：点击后直接跳转目标 App（Link 会用 URL Scheme 拉起对应应用）
+/// 一枚图标：彩色圆底/圆角底 + SF Symbol 或 emoji，整块可点击直接跳转
 struct ShortcutTile: View {
     let shortcut: Shortcut
-    let textColor: Color
-    var emojiSize: CGFloat = 24
+    var shape: WidgetShape = .roundedSquare
+    var iconSize: CGFloat = 24
 
     var body: some View {
-        Group {
-            if let url = shortcut.url {
-                Link(destination: url) { tileBody }
-            } else {
-                tileBody.opacity(0.35)
+        tileContent
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                // iOS 26 上 Link 直接贴在内容上会吞掉点击（渲染模式冲突），
+                // 垫一层透明矩形再挂 Link 才能正常拉起目标 App
+                if let url = shortcut.url {
+                    Link(destination: url) {
+                        Rectangle()
+                            .fill(Color.clear)
+                            .contentShape(Rectangle())
+                    }
+                }
             }
+            .opacity(shortcut.url == nil ? 0.35 : 1)
+            .accessibilityLabel(shortcut.name)
+    }
+
+    @ViewBuilder
+    private var tileContent: some View {
+        iconBackground
+            .aspectRatio(1, contentMode: .fit)
+            .overlay { iconContent }
+    }
+
+    @ViewBuilder
+    private var iconBackground: some View {
+        switch shape {
+        case .roundedSquare:
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(hex: shortcut.colorHex))
+        case .circle:
+            Circle()
+                .fill(Color(hex: shortcut.colorHex))
         }
     }
 
-    private var tileBody: some View {
-        VStack(spacing: 3) {
+    @ViewBuilder
+    private var iconContent: some View {
+        if let symbolName = shortcut.symbolName {
+            Image(systemName: symbolName)
+                .font(.system(size: iconSize, weight: .medium))
+                .foregroundStyle(.white)
+        } else {
             Text(shortcut.glyph)
-                .font(.system(size: emojiSize, weight: .medium))
+                .font(.system(size: iconSize, weight: .medium))
                 .minimumScaleFactor(0.5)
-            Text(shortcut.name)
-                .font(.system(size: 9, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
         }
-        .foregroundStyle(textColor)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(hex: shortcut.colorHex))
-        )
     }
 }
 
-/// N 列网格（组件和主 App 预览共用）
+/// N 列图标网格（组件和主 App 预览共用）
 struct LauncherGrid: View {
     let shortcuts: [Shortcut]
     let columns: Int
-    let textColor: Color
-    var emojiSize: CGFloat = 24
+    var shape: WidgetShape = .roundedSquare
+    var iconSize: CGFloat = 24
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             ForEach(rows.indices, id: \.self) { rowIndex in
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ForEach(rows[rowIndex]) { s in
-                        ShortcutTile(shortcut: s, textColor: textColor, emojiSize: emojiSize)
+                        ShortcutTile(shortcut: s, shape: shape, iconSize: iconSize)
                     }
                 }
             }

@@ -4,6 +4,7 @@ import WidgetKit
 struct ContentView: View {
     @State private var shortcuts: [Shortcut] = ShortcutStore.shared.loadShortcuts()
     @State private var style: WidgetStyle = ShortcutStore.shared.loadStyle()
+    @State private var shape: WidgetShape = ShortcutStore.shared.loadShape()
     @State private var editorShortcut: Shortcut?
     @State private var editorIsNew = false
 
@@ -27,7 +28,7 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        editorShortcut = Shortcut(name: "", emoji: "🚀", colorHex: "#0A84FF", urlString: "")
+                        editorShortcut = Shortcut(name: "", emoji: "", symbol: nil, colorHex: "#0A84FF", urlString: "")
                         editorIsNew = true
                     } label: {
                         Image(systemName: "plus")
@@ -35,17 +36,17 @@ struct ContentView: View {
                 }
             }
             .sheet(item: $editorShortcut) { target in
-                ShortcutEditor(shortcut: target, isNew: editorIsNew) { result in
+                ShortcutEditor(shortcut: target, isNew: editorIsNew, shape: shape) { result in
                     applyEdit(of: target, result: result)
                 }
             }
         }
     }
 
-    // MARK: - 风格选择
+    // MARK: - 风格与形状
 
     private var styleSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("组件风格").font(.headline)
             Picker("组件风格", selection: $style) {
                 ForEach(WidgetStyle.allCases) { s in
@@ -55,6 +56,15 @@ struct ContentView: View {
             .pickerStyle(.segmented)
             .onChange(of: style) { _, newValue in
                 ShortcutStore.shared.saveStyle(newValue)
+            }
+            Picker("图标形状", selection: $shape) {
+                ForEach(WidgetShape.allCases) { s in
+                    Text(s.rawValue).tag(s)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: shape) { _, newValue in
+                ShortcutStore.shared.saveShape(newValue)
             }
         }
         .padding()
@@ -66,8 +76,9 @@ struct ContentView: View {
     private var previewSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("桌面预览").font(.headline)
-            LauncherGrid(shortcuts: shortcuts, columns: 4, textColor: .primary, emojiSize: 18)
-                .frame(height: 130)
+            LauncherGrid(shortcuts: shortcuts, columns: 5, shape: shape, iconSize: 18)
+                .frame(height: 170)
+                .frame(maxWidth: .infinity)
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemGroupedBackground)))
         }
@@ -77,7 +88,15 @@ struct ContentView: View {
 
     private var shortcutsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("快捷方式（\(shortcuts.count)）").font(.headline)
+            HStack {
+                Text("快捷方式（\(shortcuts.count)）").font(.headline)
+                Spacer()
+                Button("重置为预设") {
+                    shortcuts = Shortcut.presets
+                    ShortcutStore.shared.saveShortcuts(shortcuts)
+                }
+                .font(.footnote)
+            }
             VStack(spacing: 0) {
                 ForEach(shortcuts) { s in
                     row(s)
@@ -94,10 +113,8 @@ struct ContentView: View {
             editorIsNew = false
         } label: {
             HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(hex: s.colorHex))
+                ShortcutTile(shortcut: s, shape: shape, iconSize: 18)
                     .frame(width: 40, height: 40)
-                    .overlay(Text(s.glyph).font(.system(size: 20)))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(s.name).font(.body)
                     Text(s.urlString).font(.caption).foregroundStyle(.secondary)
@@ -124,8 +141,9 @@ struct ContentView: View {
                         ShortcutStore.shared.saveShortcuts(shortcuts + [p])
                         shortcuts = ShortcutStore.shared.loadShortcuts()
                     } label: {
-                        VStack(spacing: 2) {
-                            Text(p.emoji).font(.system(size: 22))
+                        VStack(spacing: 4) {
+                            ShortcutTile(shortcut: p, shape: .circle, iconSize: 20)
+                                .frame(width: 36, height: 36)
                             Text(p.name).font(.caption)
                         }
                         .frame(maxWidth: .infinity)
@@ -157,18 +175,43 @@ struct ContentView: View {
 // MARK: - 编辑/新建快捷方式
 
 struct ShortcutEditor: View {
+    enum IconMode: String, CaseIterable, Identifiable {
+        case symbol = "系统图标"
+        case emoji = "Emoji"
+        var id: String { rawValue }
+    }
+
     @Environment(\.dismiss) private var dismiss
     @State private var shortcut: Shortcut
+    @State private var iconMode: IconMode
     private let isNew: Bool
+    private let shape: WidgetShape
     private let onSave: (Shortcut?) -> Void
 
     private let palette = ["#0A84FF", "#30D158", "#FF9F0A", "#BF5AF2",
                            "#FF375F", "#5E5CE6", "#64D2FF", "#66D4CF",
                            "#FFD60A", "#8E8E93"]
 
-    init(shortcut: Shortcut, isNew: Bool, onSave: @escaping (Shortcut?) -> Void) {
+    private let symbolCatalog = ["message.fill", "envelope.fill", "phone.fill", "camera.fill",
+                                 "music.note", "music.note.list", "headphones", "play.fill",
+                                 "play.tv.fill", "tv", "podcast", "book.fill",
+                                 "gamecontroller.fill", "cart.fill", "bag.fill", "creditcard.fill",
+                                 "banknote.fill", "fork.knife", "cup.and.saucer.fill", "car.fill",
+                                 "airplane", "figure.walk", "house.fill", "gearshape.fill",
+                                 "wifi", "moon.fill", "sun.max.fill", "cloud.sun.fill",
+                                 "bolt.fill", "clock.fill", "calendar", "timer",
+                                 "map.fill", "safari", "photo.fill", "heart.fill",
+                                 "star.fill", "paintpalette.fill", "pencil", "note.text",
+                                 "doc.text.fill", "folder.fill", "briefcase.fill", "graduationcap.fill",
+                                 "pills.fill", "dumbbell.fill", "sportscourt.fill", "leaf.fill",
+                                 "paperplane.fill", "waveform", "sparkles", "lightbulb.fill",
+                                 "gift.fill", "ticket.fill", "scissors", "link"]
+
+    init(shortcut: Shortcut, isNew: Bool, shape: WidgetShape, onSave: @escaping (Shortcut?) -> Void) {
         _shortcut = State(initialValue: shortcut)
+        _iconMode = State(initialValue: isNew || shortcut.symbolName != nil ? .symbol : .emoji)
         self.isNew = isNew
+        self.shape = shape
         self.onSave = onSave
     }
 
@@ -177,10 +220,8 @@ struct ShortcutEditor: View {
             Form {
                 Section("预览") {
                     HStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(hex: shortcut.colorHex))
+                        ShortcutTile(shortcut: shortcut, shape: shape, iconSize: 26)
                             .frame(width: 56, height: 56)
-                            .overlay(Text(shortcut.glyph).font(.system(size: 26)))
                         VStack(alignment: .leading, spacing: 4) {
                             Text(shortcut.name.isEmpty ? "未命名" : shortcut.name)
                                 .font(.subheadline)
@@ -190,14 +231,48 @@ struct ShortcutEditor: View {
                         }
                     }
                 }
+                Section("图标") {
+                    Picker("图标类型", selection: $iconMode) {
+                        ForEach(IconMode.allCases) { m in
+                            Text(m.rawValue).tag(m)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    if iconMode == .symbol {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 48), spacing: 8)], spacing: 8) {
+                            ForEach(symbolCatalog, id: \.self) { sym in
+                                Button {
+                                    shortcut.symbol = sym
+                                } label: {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color(hex: shortcut.colorHex))
+                                        Image(systemName: sym)
+                                            .font(.system(size: 18, weight: .medium))
+                                            .foregroundStyle(.white)
+                                    }
+                                    .frame(height: 48)
+                                    .overlay {
+                                        if shortcut.symbol == sym {
+                                            RoundedRectangle(cornerRadius: 12)
+                                                .stroke(Color.primary, lineWidth: 2)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    } else {
+                        TextField("Emoji（如 💬）", text: $shortcut.emoji)
+                    }
+                }
                 Section("基本信息") {
                     TextField("名称（如：微信）", text: $shortcut.name)
-                    TextField("Emoji（如 💬，可留空取首字）", text: $shortcut.emoji)
                     TextField("URL Scheme（如 weixin://）", text: $shortcut.urlString)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
-                Section("方块颜色") {
+                Section("背景颜色") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 8)], spacing: 8) {
                         ForEach(palette, id: \.self) { hex in
                             Button {
@@ -234,6 +309,11 @@ struct ShortcutEditor: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("保存") {
+                        if iconMode == .emoji {
+                            shortcut.symbol = nil
+                        } else if (shortcut.symbol?.isEmpty ?? true) {
+                            shortcut.symbol = "star.fill"   // 符号模式没选时给个默认
+                        }
                         onSave(shortcut)
                         dismiss()
                     }

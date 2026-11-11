@@ -8,6 +8,7 @@ struct ShortcutStore {
 
     private static let shortcutsKey = "shortcuts"
     private static let styleKey = "style"
+    private static let shapeKey = "shape"
 
     private let defaults: UserDefaults?
 
@@ -39,6 +40,19 @@ struct ShortcutStore {
 
     func saveStyle(_ style: WidgetStyle) {
         defaults?.set(style.rawValue, forKey: ShortcutStore.styleKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    func loadShape() -> WidgetShape {
+        if let raw = defaults?.string(forKey: ShortcutStore.shapeKey),
+           let shape = WidgetShape(rawValue: raw) {
+            return shape
+        }
+        return .roundedSquare
+    }
+
+    func saveShape(_ shape: WidgetShape) {
+        defaults?.set(shape.rawValue, forKey: ShortcutStore.shapeKey)
         WidgetCenter.shared.reloadAllTimelines()
     }
 }
