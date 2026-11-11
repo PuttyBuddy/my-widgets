@@ -5,6 +5,12 @@ struct ContentView: View {
     @State private var shortcuts: [Shortcut] = ShortcutStore.shared.loadShortcuts()
     @State private var style: WidgetStyle = ShortcutStore.shared.loadStyle()
     @State private var shape: WidgetShape = ShortcutStore.shared.loadShape()
+    @State private var appFontChoice: AppFont = ShortcutStore.shared.loadFont()
+    @State private var appearance: AppAppearance = ShortcutStore.shared.loadAppearance()
+    @State private var city: String = ShortcutStore.shared.loadCity()
+    @State private var waterGoal: Int = ShortcutStore.shared.waterGoal()
+    @State private var weatherStatus: String = ""
+    @State private var weatherLoading = false
     @State private var editorShortcut: Shortcut?
     @State private var editorIsNew = false
 
@@ -20,6 +26,8 @@ struct ContentView: View {
                     if !shortcuts.isEmpty { previewSection }
                     shortcutsSection
                     presetSection
+                    weatherSection
+                    waterSection
                 }
                 .padding()
             }
@@ -38,6 +46,11 @@ struct ContentView: View {
             .sheet(item: $editorShortcut) { target in
                 ShortcutEditor(shortcut: target, isNew: editorIsNew, shape: shape) { result in
                     applyEdit(of: target, result: result)
+                }
+            }
+            .task {
+                if ShortcutStore.shared.loadWeather() == nil {
+                    await refreshWeather()
                 }
             }
         }
@@ -66,9 +79,98 @@ struct ContentView: View {
             .onChange(of: shape) { _, newValue in
                 ShortcutStore.shared.saveShape(newValue)
             }
+            Picker("字体", selection: $appFontChoice) {
+                ForEach(AppFont.allCases) { f in
+                    Text(f.label).tag(f)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: appFontChoice) { _, newValue in
+                ShortcutStore.shared.saveFont(newValue)
+            }
+            Picker("外观", selection: $appearance) {
+                ForEach(AppAppearance.allCases) { a in
+                    Text(a.label).tag(a)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: appearance) { _, newValue in
+                ShortcutStore.shared.saveAppearance(newValue)
+            }
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemGroupedBackground)))
+    }
+
+    // MARK: - 天气城市
+
+    private var weatherSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("天气组件").font(.headline)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    TextField("城市名，如：上海", text: $city)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .onSubmit { ShortcutStore.shared.saveCity(city) }
+                    Button("保存") { ShortcutStore.shared.saveCity(city) }
+                        .buttonStyle(.bordered)
+                }
+                Button {
+                    Task { await refreshWeather() }
+                } label: {
+                    if weatherLoading {
+                        ProgressView().frame(maxWidth: .infinity)
+                    } else {
+                        Text("刷新天气数据").frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(weatherLoading)
+                if !weatherStatus.isEmpty {
+                    Text(weatherStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemGroupedBackground)))
+        }
+    }
+
+    private func refreshWeather() async {
+        weatherLoading = true
+        weatherStatus = "正在获取 \(city) 的天气…"
+        do {
+            let data = try await WeatherService.fetchWeather(city: ShortcutStore.shared.loadCity())
+            ShortcutStore.shared.saveWeather(data)
+            weatherStatus = "✅ \(data.city) \(data.conditionText) \(data.tempText)，湿度 \(data.humidity)%，日出 \(data.sunrise)"
+        } catch {
+            weatherStatus = "⚠️ 获取失败：\(error.localizedDescription)，组件会先用缓存数据"
+        }
+        weatherLoading = false
+    }
+
+    // MARK: - 喝水目标
+
+    private var waterSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("喝水组件").font(.headline)
+            HStack {
+                Text("每日目标：\(waterGoal) 杯")
+                Spacer()
+                Stepper("", onIncrement: {
+                    waterGoal += 1
+                    ShortcutStore.shared.saveWaterGoal(waterGoal)
+                }, onDecrement: {
+                    waterGoal = max(1, waterGoal - 1)
+                    ShortcutStore.shared.saveWaterGoal(waterGoal)
+                })
+                .fixedSize()
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemGroupedBackground)))
+        }
     }
 
     // MARK: - 桌面效果预览

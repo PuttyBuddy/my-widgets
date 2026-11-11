@@ -67,3 +67,37 @@ enum WidgetShape: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 }
+
+/// 组件字体
+enum AppFont: String, CaseIterable, Identifiable {
+    case system = "Default"
+    case rounded = "Round"
+    case serif = "Serif"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "默认"
+        case .rounded: return "圆体"
+        case .serif: return "衬线"
+        }
+    }
+}
+
+/// 组件外观
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "跟随系统"
+        case .light: return "浅色"
+        case .dark: return "深色"
+        }
+    }
+}
