@@ -1,0 +1,40 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        run: xcodegen generate
+
+      - name: 编译未签名 ipa
+        run: |
+          xcodebuild \
+            -project MyWidgets.xcodeproj \
+            -scheme MyWidgets \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+          mkdir -p Payload
+          cp -R "build/Build/Products/Release-iphoneos/MyWidgets.app" Payload/
+          zip -qry MyWidgets-unsigned.ipa Payload
+
+      - name: 上传 ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyWidgets-ipa
+          path: MyWidgets-unsigned.ipa

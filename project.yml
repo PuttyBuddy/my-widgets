@@ -1,0 +1,65 @@
+name: MyWidgets
+options:
+  bundleIdPrefix: com.mywidgets
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+targets:
+  MyWidgets:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - "*.entitlements"
+          - "Info.plist"
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mywidgets.app
+        CODE_SIGN_ENTITLEMENTS: App/MyWidgets.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: 我的组件
+        UILaunchScreen: {}
+        ITSAppUsesNonExemptEncryption: false
+    dependencies:
+      - target: MyWidgetsWidget
+  MyWidgetsWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widget
+        excludes:
+          - "*.entitlements"
+          - "Info.plist"
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mywidgets.app.widget
+        CODE_SIGN_ENTITLEMENTS: Widget/MyWidgetsWidget.entitlements
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: 快速启动
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+schemes:
+  MyWidgets:
+    build:
+      targets:
+        MyWidgets: all
+    run:
+      config: Debug
+    archive:
+      config: Release

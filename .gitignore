@@ -1,0 +1,13 @@
+# XcodeGen 生成物（本地跑 `xcodegen generate` 重新生成即可）
+*.xcodeproj
+
+# 构建产物
+build/
+DerivedData/
+*.ipa
+
+# 系统
+.DS_Store
+
+# 解包临时文件
+extracted/
