@@ -39,7 +39,8 @@ foreach ($app in $apps) {
         if (-not $resp.results -or $resp.results.Count -eq 0) { throw "not found" }
         $art = $resp.results[0].artworkUrl512
         if (-not $art) { $art = $resp.results[0].artworkUrl100 }
-        $art = $art -replace "100x100", "150x150"
+        $art = $art -replace "100x100bb.jpg", "150x150bb.png"
+        $art = $art -replace "512x512bb.jpg", "512x512bb.png"
         $png = Invoke-WebRequest -Uri $art -TimeoutSec 20 -UseBasicParsing
         $file = Join-Path $OutDir ("icon_" + $app.key + ".png")
         [IO.File]::WriteAllBytes($file, $png.Content)
