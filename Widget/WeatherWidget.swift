@@ -40,6 +40,15 @@ struct WeatherProvider: TimelineProvider {
         sunrise: "06:00", sunset: "18:00",
         conditionSymbol: "cloud.sun.fill", conditionText: "局部多云",
         hourlyTemps: [22, 22.5, 23, 24, 25, 26, 27, 27.5, 28, 27, 26, 25],
+        daily: [
+            DayForecast(weekday: "周四", symbol: "cloud.sun.fill", min: 20, max: 30),
+            DayForecast(weekday: "周五", symbol: "sun.max.fill", min: 20, max: 30),
+            DayForecast(weekday: "周六", symbol: "cloud.sun.fill", min: 18, max: 28),
+            DayForecast(weekday: "周日", symbol: "cloud.rain.fill", min: 15, max: 25),
+            DayForecast(weekday: "周一", symbol: "cloud.sun.fill", min: 17, max: 26),
+            DayForecast(weekday: "周二", symbol: "sun.max.fill", min: 19, max: 29),
+            DayForecast(weekday: "周三", symbol: "cloud.rain.fill", min: 16, max: 24)
+        ],
         fetchedAt: Date()
     )
 }
@@ -53,7 +62,8 @@ struct WeatherWidget: Widget {
         }
         .configurationDisplayName("天气")
         .description("温度、紫外线指数、湿度、风向、降水和日出日落。城市在主 App 里设置。")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge,
+                            .accessoryInline, .accessoryRectangular, .accessoryCircular])
     }
 }
 
@@ -77,8 +87,10 @@ struct WeatherEntryView: View {
         Group {
             if let data = entry.data {
                 switch family {
-                case .systemLarge: largeCard(data)
-                case .systemMedium: wideCard(data)
+                case .systemLarge, .systemMedium: weekCard(data)
+                case .accessoryInline: inlinePill(data)
+                case .accessoryRectangular: rectangularPill(data)
+                case .accessoryCircular: circularUV(data)
                 default: smallCard(data)
                 }
             } else {
@@ -90,71 +102,148 @@ struct WeatherEntryView: View {
         .containerBackground(for: .widget) { palette.background }
     }
 
-    // MARK: 大卡片（对标 Koco 大号天气）
+    // MARK: 主卡片（左：实况；右上：湿度/降水/UVI；底部：一周预报）
 
-    private func largeCard(_ data: WeatherData) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 10) {
+    private func weekCard(_ data: WeatherData) -> some View {
+        let big = family == .systemLarge
+        let days = data.daily ?? []
+        return VStack(alignment: .leading, spacing: big ? 10 : 6) {
+            HStack(alignment: .top, spacing: 8) {
+                // 左列：实况（图标与温度并排，对齐参考图）
                 VStack(alignment: .leading, spacing: 2) {
-                    Image(systemName: data.conditionSymbol)
-                        .font(.system(size: 40))
-                        .foregroundStyle(conditionColor(data))
-                    Text(data.conditionText)
-                        .font(appFont(font, 12, .semibold))
+                    HStack(spacing: big ? 10 : 7) {
+                        Image(systemName: data.conditionSymbol)
+                            .font(.system(size: big ? 34 : 27))
+                            .foregroundStyle(conditionColor(data))
+                        Text(data.tempText)
+                            .font(appFont(font, big ? 36 : 28, .heavy))
+                            .monospacedDigit()
+                            .foregroundStyle(palette.ink)
+                    }
+                    Text("\(data.city), \(data.conditionText)")
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(palette.sub)
-                    Text(data.tempText)
-                        .font(appFont(font, 30, .heavy))
-                        .foregroundStyle(palette.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    HStack(spacing: 6) {
+                        Text("↓ " + String(format: "%.0f°", data.tempMin))
+                            .font(.system(size: 11, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(Color(hex: "#3E9BFF"))
+                        Text("↑ " + String(format: "%.0f°", data.tempMax))
+                            .font(.system(size: 11, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(Color(hex: "#FF7A59"))
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                UVIBar(value: data.uvIndex, ink: palette.ink, sub: palette.sub)
-                    .frame(width: 30)
-
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
-                          spacing: 8) {
-                    badge("drop.fill", color: "#4ECDC4", value: "\(data.humidity)%")
-                    badge("sunrise.fill", color: "#FFB56B", value: data.sunrise)
-                    badge("moon.stars.fill", color: "#8E7CFF", value: data.sunset)
-                    badge("wind", color: "#FF7EB3", value: data.windDir)
-                    badge("umbrella.fill", color: "#6BB5FF", value: "\(data.precipProb)%")
-                    badge("location.north.fill", color: "#4ED9A2", value: data.city)
+                Spacer(minLength: 4)
+                // 右上：湿度 / 降水 / UVI
+                HStack(spacing: big ? 12 : 8) {
+                    metricBadge("drop.fill", "#4ECDC4", "\(data.humidity)%")
+                    metricBadge("umbrella.fill", "#6BB5FF", "\(data.precipProb)%")
+                    metricBadge("sun.max.fill", "#FF9F0A", data.uvText)
                 }
-                .frame(maxWidth: .infinity)
+            }
+            Divider().opacity(0.15)
+            // 底部：一周天气
+            if days.isEmpty {
+                Text("在主 App 里刷新一次天气")
+                    .font(.system(size: 11))
+                    .foregroundStyle(palette.sub)
+                    .frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 0) {
+                    ForEach(days) { d in
+                        VStack(spacing: 3) {
+                            Text(d.weekday)
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(palette.sub)
+                                .lineLimit(1)
+                            Image(systemName: d.symbol)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(hex: "#3E9BFF"))
+                            Text(String(format: "%.0f-%.0f°", d.min, d.max))
+                                .font(.system(size: 9, weight: .semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(palette.ink)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.5)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+
+    private func metricBadge(_ symbol: String, _ colorHex: String, _ value: String) -> some View {
+        let big = family == .systemLarge
+        return VStack(spacing: 4) {
+            Image(systemName: symbol)
+                .font(.system(size: big ? 13 : 11, weight: .semibold))
+                .foregroundStyle(Color(hex: colorHex))
+                .frame(width: big ? 32 : 26, height: big ? 32 : 26)
+                .background(Circle().fill(Color(hex: colorHex).opacity(isDark ? 0.25 : 0.15)))
+            Text(value)
+                .font(.system(size: big ? 13 : 11, weight: .heavy))
+                .monospacedDigit()
+                .foregroundStyle(palette.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+    }
+
+    // MARK: 锁屏胶囊（对标 Koco 胶囊组）
+
+    private func inlinePill(_ data: WeatherData) -> some View {
+        Text("\(data.humidity)% | \(data.precipProb)%")
+    }
+
+    private func rectangularPill(_ data: WeatherData) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(data.city)
+                    .font(.system(size: 12, weight: .bold))
+                    .lineLimit(1)
+                Text("\(data.tempText) \(data.conditionText)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("UVI \(data.uvText)")
+                    .font(.system(size: 11, weight: .bold))
+                    .monospacedDigit()
+                UVBar(value: data.uvIndex, ink: .primary, sub: .secondary)
+                    .frame(width: 46, height: 12)
+            }
+        }
+    }
+
+    private func circularUV(_ data: WeatherData) -> some View {
+        ZStack {
+            Circle()
+                .stroke(uvGradient, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                .opacity(0.9)
+            VStack(spacing: 0) {
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: 11))
+                Text(data.uvText)
+                    .font(.system(size: 16, weight: .heavy))
+                    .monospacedDigit()
             }
         }
         .padding(4)
     }
 
-    // MARK: 宽条（对标 Koco 宽天气）
-
-    private func wideCard(_ data: WeatherData) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: data.conditionSymbol)
-                .font(.system(size: 30))
-                .foregroundStyle(conditionColor(data))
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text("最高").font(.system(size: 11)).foregroundStyle(palette.sub)
-                    Text(String(format: "%.0f°", data.tempMax)).font(appFont(font, 13, .bold)).foregroundStyle(.orange)
-                }
-                HStack(spacing: 4) {
-                    Text("最低").font(.system(size: 11)).foregroundStyle(palette.sub)
-                    Text(String(format: "%.0f°", data.tempMin)).font(appFont(font, 13, .bold)).foregroundStyle(Color(red: 0.35, green: 0.65, blue: 1))
-                }
-            }
-            TempCurve(temps: data.hourlyTemps, ink: palette.ink)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(data.city).font(appFont(font, 13, .bold)).foregroundStyle(palette.ink)
-                HStack(spacing: 3) {
-                    Image(systemName: "sunset.fill").font(.system(size: 10)).foregroundStyle(palette.sub)
-                    Text(data.sunset).font(appFont(font, 12, .semibold)).foregroundStyle(palette.ink)
-                }
-            }
-        }
-        .padding(.horizontal, 6)
+    private var uvGradient: LinearGradient {
+        LinearGradient(
+            colors: [Color(red: 0.62, green: 0.55, blue: 0.95),
+                     Color(red: 0.95, green: 0.45, blue: 0.45),
+                     Color(red: 0.98, green: 0.75, blue: 0.35)],
+            startPoint: .bottom, endPoint: .top
+        )
     }
 
     // MARK: 小号
@@ -181,22 +270,6 @@ struct WeatherEntryView: View {
     }
 
     // MARK: - 部件
-
-    private func badge(_ symbol: String, color: String, value: String) -> some View {
-        VStack(spacing: 3) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color(hex: color))
-                .frame(width: 34, height: 34)
-                .background(Circle().fill(Color(hex: color).opacity(isDark ? 0.22 : 0.16)))
-            Text(value)
-                .font(.system(size: 10, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(palette.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-        }
-    }
 
     private func conditionColor(_ data: WeatherData) -> Color {
         switch data.conditionSymbol {
@@ -248,50 +321,4 @@ struct UVIBar: View {
     }
 }
 
-// MARK: - 温度曲线
-
-struct TempCurve: View {
-    let temps: [Double]
-    let ink: Color
-
-    var body: some View {
-        GeometryReader { geo in
-            let vals = temps.isEmpty ? [0.0, 0.0] : temps
-            ZStack {
-                curvePath(vals, in: geo.size)
-                    .stroke(ink.opacity(0.65), style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                Circle().fill(Color.orange).frame(width: 6, height: 6)
-                    .position(point(at: 0, vals: vals, size: geo.size))
-                Circle().fill(Color.orange).frame(width: 6, height: 6)
-                    .position(point(at: vals.count - 1, vals: vals, size: geo.size))
-            }
-        }
-    }
-
-    private func point(at index: Int, vals: [Double], size: CGSize) -> CGPoint {
-        guard !vals.isEmpty else { return CGPoint(x: 0, y: 0) }
-        let lo = vals.min() ?? 0, hi = vals.max() ?? 1
-        let span = max(1, hi - lo)
-        let i = min(max(0, index), vals.count - 1)
-        let x = size.width * CGFloat(i) / CGFloat(max(1, vals.count - 1))
-        let y = size.height * (1 - CGFloat((vals[i] - lo) / span)) * 0.8 + size.height * 0.1
-        return CGPoint(x: x, y: y)
-    }
-
-    private func curvePath(_ vals: [Double], in size: CGSize) -> Path {
-        var path = Path()
-        guard !vals.isEmpty else { return path }
-        let lo = vals.min() ?? 0, hi = vals.max() ?? 1
-        let span = max(1, hi - lo)
-        for (i, t) in vals.enumerated() {
-            let x = size.width * CGFloat(i) / CGFloat(max(1, vals.count - 1))
-            let y = size.height * (1 - CGFloat((t - lo) / span)) * 0.8 + size.height * 0.1
-            if i == 0 {
-                path.move(to: CGPoint(x: x, y: y))
-            } else {
-                path.addLine(to: CGPoint(x: x, y: y))
-            }
-        }
-        return path
-    }
-}
+// MARK: - 温度曲线（备用，当前布局未使用）

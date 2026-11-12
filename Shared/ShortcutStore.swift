@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import WidgetKit
 
 /// 通过 App Group 在主 App 和组件之间共享数据与设置
@@ -9,6 +10,7 @@ struct ShortcutStore {
     private static let shortcutsKey = "shortcuts"
     private static let styleKey = "style"
     private static let shapeKey = "shape"
+    private static let layoutKey = "launcher_layout"
     private static let fontKey = "app_font"
     private static let appearanceKey = "app_appearance"
     private static let cityKey = "weather_city"
@@ -16,6 +18,9 @@ struct ShortcutStore {
     private static let waterCountKey = "water_count"
     private static let waterDateKey = "water_date"
     private static let waterGoalKey = "water_goal"
+    private static let actionModeKey = "action_mode"
+    private static let keepInteractionsKey = "keep_interactions"
+    private static let bgFileName = "widget-bg.jpg"
 
     private let defaults: UserDefaults?
 
@@ -64,6 +69,19 @@ struct ShortcutStore {
 
     func saveShape(_ shape: WidgetShape) {
         defaults?.set(shape.rawValue, forKey: ShortcutStore.shapeKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    func loadLauncherLayout() -> LauncherLayout {
+        if let raw = defaults?.string(forKey: ShortcutStore.layoutKey),
+           let layout = LauncherLayout(rawValue: raw) {
+            return layout
+        }
+        return .grid
+    }
+
+    func saveLauncherLayout(_ layout: LauncherLayout) {
+        defaults?.set(layout.rawValue, forKey: ShortcutStore.layoutKey)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
@@ -148,5 +166,66 @@ struct ShortcutStore {
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
         return fmt.string(from: Date())
+    }
+
+    // MARK: - 点按动作
+
+    func loadActionMode() -> ActionMode {
+        if let raw = defaults?.string(forKey: ShortcutStore.actionModeKey),
+           let mode = ActionMode(rawValue: raw) {
+            return mode
+        }
+        return .preset
+    }
+
+    func saveActionMode(_ mode: ActionMode) {
+        defaults?.set(mode.rawValue, forKey: ShortcutStore.actionModeKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// 是否保留小工具内的交互（跳转/按钮）
+    func loadKeepInteractions() -> Bool {
+        if defaults?.object(forKey: ShortcutStore.keepInteractionsKey) == nil {
+            return true
+        }
+        return defaults?.bool(forKey: ShortcutStore.keepInteractionsKey) ?? true
+    }
+
+    func saveKeepInteractions(_ value: Bool) {
+        defaults?.set(value, forKey: ShortcutStore.keepInteractionsKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // MARK: - 组件背景图片
+
+    private static func bgFileURL() -> URL? {
+        guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) else {
+            return nil
+        }
+        return dir.appendingPathComponent(ShortcutStore.bgFileName)
+    }
+
+    @discardableResult
+    func saveBackgroundImage(_ data: Data) -> Bool {
+        guard let url = ShortcutStore.bgFileURL() else { return false }
+        do {
+            try data.write(to: url, options: .atomic)
+            WidgetCenter.shared.reloadAllTimelines()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func loadBackgroundImage() -> UIImage? {
+        guard let url = ShortcutStore.bgFileURL() else { return nil }
+        return UIImage(contentsOfFile: url.path)
+    }
+
+    func clearBackgroundImage() {
+        if let url = ShortcutStore.bgFileURL() {
+            try? FileManager.default.removeItem(at: url)
+        }
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

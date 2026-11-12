@@ -6,6 +6,7 @@ struct MyWidgetsBundle: WidgetBundle {
     var body: some Widget {
         LauncherWidget()
         ClockWidget()
+        SmallClockWidget()
         WeatherWidget()
         WaterWidget()
     }

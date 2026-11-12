@@ -8,11 +8,15 @@ struct LauncherEntry: TimelineEntry {
     let shortcuts: [Shortcut]
     let style: WidgetStyle
     let shape: WidgetShape
+    let layout: LauncherLayout
+    let actionMode: ActionMode
+    let keepInteractions: Bool
 }
 
 struct LauncherProvider: TimelineProvider {
     func placeholder(in context: Context) -> LauncherEntry {
-        LauncherEntry(date: .now, shortcuts: Shortcut.presets, style: .glass, shape: .roundedSquare)
+        LauncherEntry(date: .now, shortcuts: Shortcut.presets, style: .glass,
+                      shape: .roundedSquare, layout: .grid, actionMode: .preset, keepInteractions: true)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (LauncherEntry) -> Void) {
@@ -24,10 +28,14 @@ struct LauncherProvider: TimelineProvider {
     }
 
     private func currentEntry() -> LauncherEntry {
-        LauncherEntry(date: .now,
-                      shortcuts: ShortcutStore.shared.loadShortcuts(),
-                      style: ShortcutStore.shared.loadStyle(),
-                      shape: ShortcutStore.shared.loadShape())
+        let store = ShortcutStore.shared
+        return LauncherEntry(date: .now,
+                             shortcuts: store.loadShortcuts(),
+                             style: store.loadStyle(),
+                             shape: store.loadShape(),
+                             layout: store.loadLauncherLayout(),
+                             actionMode: store.loadActionMode(),
+                             keepInteractions: store.loadKeepInteractions())
     }
 }
 
@@ -39,7 +47,7 @@ struct LauncherWidget: Widget {
             LauncherEntryView(entry: entry)
         }
         .configurationDisplayName("快速启动")
-        .description("点击图标直接打开对应 App。在主 App 里编辑快捷方式、图标和风格。")
+        .description("点击图标直接打开对应 App。应用、图标、背景和动作都在主 App 里配置。")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryCircular])
     }
 }
@@ -61,15 +69,26 @@ struct LauncherEntryView: View {
         entry.style == .glass ? .primary : .white
     }
 
+    /// 背景：用户选了图片就用图片，否则用默认材质
     @ViewBuilder
     private var background: some View {
-        switch entry.style {
-        case .glass:
-            Rectangle().fill(.ultraThinMaterial)
-        case .transparent:
-            Color.clear
-        case .dark:
-            Color(red: 0.07, green: 0.07, blue: 0.09).opacity(0.85)
+        if let img = ShortcutStore.shared.loadBackgroundImage() {
+            GeometryReader { g in
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: g.size.width, height: g.size.height)
+                    .clipped()
+            }
+        } else {
+            switch entry.style {
+            case .glass:
+                Rectangle().fill(.ultraThinMaterial)
+            case .transparent:
+                Color.clear
+            case .dark:
+                Color(red: 0.07, green: 0.07, blue: 0.09).opacity(0.85)
+            }
         }
     }
 
@@ -78,13 +97,22 @@ struct LauncherEntryView: View {
         switch family {
         case .systemSmall:
             LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(6)),
-                         columns: 3, shape: entry.shape, iconSize: 22)
+                         columns: 3, shape: entry.shape, iconSize: 22,
+                         actionMode: entry.actionMode, interactive: entry.keepInteractions)
         case .systemMedium:
-            LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(10)),
-                         columns: 5, shape: entry.shape, iconSize: 28)
-        case .systemLarge:
+            // 迷你应用（中）：3×7 = 21 个小图标，对标 Koco
             LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(21)),
-                         columns: 7, shape: entry.shape, iconSize: 20)
+                         columns: 7, shape: entry.shape, iconSize: 16,
+                         actionMode: entry.actionMode, interactive: entry.keepInteractions)
+        case .systemLarge:
+            if entry.layout == .bubble {
+                BubbleIconLayout(shortcuts: Array(entry.shortcuts.prefix(21)),
+                                 actionMode: entry.actionMode, interactive: entry.keepInteractions)
+            } else {
+                LauncherGrid(shortcuts: Array(entry.shortcuts.prefix(21)),
+                             columns: 7, shape: entry.shape, iconSize: 20,
+                             actionMode: entry.actionMode, interactive: entry.keepInteractions)
+            }
         default:
             accessoryView
         }
@@ -106,7 +134,7 @@ struct LauncherEntryView: View {
             }
             .overlay {
                 // 与主网格一致：iOS 26 需要 Link 垫在透明层上才能跳转
-                if let url = first.url {
+                if entry.keepInteractions, let url = first.effectiveURL(entry.actionMode) {
                     Link(destination: url) {
                         Rectangle()
                             .fill(Color.clear)
@@ -118,5 +146,49 @@ struct LauncherEntryView: View {
             Text("🚀")
                 .font(.system(size: 20))
         }
+    }
+}
+
+// MARK: - 气泡布局（中心大图标 + 两圈环绕）
+
+struct BubbleIconLayout: View {
+    let shortcuts: [Shortcut]
+    var actionMode: ActionMode = .preset
+    var interactive: Bool = true
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = min(geo.size.width, geo.size.height)
+            let cx = geo.size.width / 2
+            let cy = geo.size.height / 2
+            ZStack {
+                if let center = shortcuts.first {
+                    bubbleTile(center, size: side * 0.36)
+                        .position(x: cx, y: cy)
+                }
+                let ring1 = Array(shortcuts.dropFirst().prefix(8))
+                ForEach(Array(ring1.enumerated()), id: \.element.id) { pair in
+                    let angle = (Double(pair.offset) / Double(max(1, ring1.count))) * 2 * .pi - .pi / 2
+                    let radius = side * 0.335
+                    bubbleTile(pair.element, size: side * 0.21)
+                        .position(x: cx + CGFloat(cos(angle)) * radius,
+                                  y: cy + CGFloat(sin(angle)) * radius)
+                }
+                let ring2 = Array(shortcuts.dropFirst(9).prefix(12))
+                ForEach(Array(ring2.enumerated()), id: \.element.id) { pair in
+                    let angle = (Double(pair.offset) / Double(max(1, ring2.count))) * 2 * .pi - .pi / 2
+                    let radius = side * 0.47
+                    bubbleTile(pair.element, size: side * 0.17)
+                        .position(x: cx + CGFloat(cos(angle)) * radius,
+                                  y: cy + CGFloat(sin(angle)) * radius)
+                }
+            }
+        }
+    }
+
+    private func bubbleTile(_ s: Shortcut, size: CGFloat) -> some View {
+        ShortcutTile(shortcut: s, shape: .circle, iconSize: size * 0.48,
+                     linkURL: s.effectiveURL(actionMode), interactive: interactive)
+            .frame(width: size, height: size)
     }
 }

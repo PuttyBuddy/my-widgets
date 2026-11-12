@@ -1,5 +1,15 @@
 import Foundation
 
+/// 单日预报
+struct DayForecast: Codable, Identifiable {
+    var weekday: String
+    var symbol: String
+    var min: Double
+    var max: Double
+
+    var id: String { weekday }
+}
+
 /// 天气数据（Open-Meteo 免费接口，无需 API Key）
 struct WeatherData: Codable {
     var city: String
@@ -15,6 +25,7 @@ struct WeatherData: Codable {
     var conditionSymbol: String
     var conditionText: String
     var hourlyTemps: [Double]
+    var daily: [DayForecast]?
     var fetchedAt: Date
 
     var tempText: String { String(format: "%.0f°", temp) }
@@ -40,9 +51,9 @@ enum WeatherService {
         let url = "https://api.open-meteo.com/v1/forecast" +
             "?latitude=\(lat)&longitude=\(lon)" +
             "&current=temperature_2m,relative_humidity_2m,weather_code,wind_direction_10m,uv_index" +
-            "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset" +
+            "&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code" +
             "&hourly=precipitation_probability,temperature_2m" +
-            "&forecast_days=2&timezone=auto"
+            "&forecast_days=7&timezone=auto"
         let data = try await jsonData(from: url)
         let resp = try JSONDecoder().decode(ForecastResponse.self, from: data)
 
@@ -50,6 +61,19 @@ enum WeatherService {
         let current = resp.current
         let symbolInfo = Self.symbolInfo(code: current.weatherCode)
         let hourIndex = Self.currentHourIndex(times: resp.hourly.time)
+
+        // 一周预报
+        var daily: [DayForecast] = []
+        let count = min(7, resp.daily.time.count)
+        for i in 0..<count {
+            let code = i < resp.daily.weatherCode.count ? resp.daily.weatherCode[i] : 0
+            daily.append(DayForecast(
+                weekday: Self.weekday(resp.daily.time[i]),
+                symbol: Self.symbolInfo(code: code).symbol,
+                min: resp.daily.temperature2mMin.indices.contains(i) ? resp.daily.temperature2mMin[i] : 0,
+                max: resp.daily.temperature2mMax.indices.contains(i) ? resp.daily.temperature2mMax[i] : 0
+            ))
+        }
 
         return WeatherData(
             city: displayName,
@@ -66,8 +90,20 @@ enum WeatherService {
             conditionSymbol: symbolInfo.symbol,
             conditionText: symbolInfo.text,
             hourlyTemps: Array(resp.hourly.temperature2m.prefix(12)),
+            daily: daily,
             fetchedAt: Date()
         )
+    }
+
+    /// "2026-11-12" → "周五"
+    static func weekday(_ iso: String) -> String {
+        let inFmt = DateFormatter()
+        inFmt.dateFormat = "yyyy-MM-dd"
+        guard let date = inFmt.date(from: iso) else { return "" }
+        let outFmt = DateFormatter()
+        outFmt.locale = Locale(identifier: "zh_CN")
+        outFmt.dateFormat = "EEE"
+        return outFmt.string(from: date)
     }
 
     // MARK: - 内部
@@ -141,15 +177,19 @@ enum WeatherService {
             }
         }
         struct Daily: Decodable {
+            let time: [String]
             let temperature2mMax: [Double]
             let temperature2mMin: [Double]
             let sunrise: [String]
             let sunset: [String]
+            let weatherCode: [Int]
 
             enum CodingKeys: String, CodingKey {
+                case time
                 case temperature2mMax = "temperature_2m_max"
                 case temperature2mMin = "temperature_2m_min"
                 case sunrise, sunset
+                case weatherCode = "weather_code"
             }
         }
         struct Hourly: Decodable {

@@ -65,8 +65,11 @@ struct ClockEntryView: View {
                     .foregroundStyle(ink.opacity(0.85))
                     .minimumScaleFactor(0.7)
                 HStack(spacing: isLarge ? 18 : 12) {
+                    let mode = ShortcutStore.shared.loadActionMode()
+                    let interactions = ShortcutStore.shared.loadKeepInteractions()
                     ForEach(entry.shortcuts) { s in
-                        ShortcutTile(shortcut: s, shape: .circle, iconSize: isLarge ? 26 : 20)
+                        ShortcutTile(shortcut: s, shape: .circle, iconSize: isLarge ? 26 : 20,
+                                     linkURL: s.effectiveURL(mode), interactive: interactions)
                     }
                 }
                 .padding(.top, isLarge ? 8 : 4)

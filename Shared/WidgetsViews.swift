@@ -1,10 +1,15 @@
 import SwiftUI
+import UIKit
 
-/// 一枚图标：彩色圆底/圆角底 + SF Symbol 或 emoji，整块可点击直接跳转
+/// 一枚图标：真实 App 图标 > SF Symbol > Emoji > 名称首字，点击行为由调用方决定
 struct ShortcutTile: View {
     let shortcut: Shortcut
     var shape: WidgetShape = .roundedSquare
     var iconSize: CGFloat = 24
+    /// 点击后打开的目标（nil = 不可点）
+    var linkURL: URL? = nil
+    /// 小工具内交互总开关
+    var interactive: Bool = true
 
     var body: some View {
         tileContent
@@ -12,7 +17,7 @@ struct ShortcutTile: View {
             .overlay {
                 // iOS 26 上 Link 直接贴在内容上会吞掉点击（渲染模式冲突），
                 // 垫一层透明矩形再挂 Link 才能正常拉起目标 App
-                if let url = shortcut.url {
+                if interactive, let url = linkURL {
                     Link(destination: url) {
                         Rectangle()
                             .fill(Color.clear)
@@ -20,7 +25,7 @@ struct ShortcutTile: View {
                     }
                 }
             }
-            .opacity(shortcut.url == nil ? 0.35 : 1)
+            .opacity(linkURL == nil ? 0.35 : 1)
             .accessibilityLabel(shortcut.name)
     }
 
@@ -29,23 +34,29 @@ struct ShortcutTile: View {
         iconBackground
             .aspectRatio(1, contentMode: .fit)
             .overlay { iconContent }
+            .clipShape(clipShape)
     }
 
-    @ViewBuilder
-    private var iconBackground: some View {
+    private var clipShape: AnyShape {
         switch shape {
         case .roundedSquare:
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color(hex: shortcut.colorHex))
+            return AnyShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         case .circle:
-            Circle()
-                .fill(Color(hex: shortcut.colorHex))
+            return AnyShape(Circle())
         }
+    }
+
+    private var iconBackground: some View {
+        clipShape.fill(Color(hex: shortcut.colorHex))
     }
 
     @ViewBuilder
     private var iconContent: some View {
-        if let symbolName = shortcut.symbolName {
+        if let assetName = shortcut.iconAsset, let img = UIImage(named: assetName) {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+        } else if let symbolName = shortcut.symbolName {
             Image(systemName: symbolName)
                 .font(.system(size: iconSize, weight: .medium))
                 .foregroundStyle(.white)
@@ -63,13 +74,16 @@ struct LauncherGrid: View {
     let columns: Int
     var shape: WidgetShape = .roundedSquare
     var iconSize: CGFloat = 24
+    var actionMode: ActionMode = .preset
+    var interactive: Bool = true
 
     var body: some View {
         VStack(spacing: 8) {
             ForEach(rows.indices, id: \.self) { rowIndex in
                 HStack(spacing: 8) {
                     ForEach(rows[rowIndex]) { s in
-                        ShortcutTile(shortcut: s, shape: shape, iconSize: iconSize)
+                        ShortcutTile(shortcut: s, shape: shape, iconSize: iconSize,
+                                     linkURL: s.effectiveURL(actionMode), interactive: interactive)
                     }
                 }
             }

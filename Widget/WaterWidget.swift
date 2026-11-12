@@ -70,6 +70,8 @@ struct WaterEntryView: View {
     }
     private var ink: Color { isDark ? .white : Color(red: 0.10, green: 0.10, blue: 0.12) }
     private var waterColor: Color { isDark ? Color(red: 0.45, green: 0.75, blue: 0.95) : Color(red: 0.35, green: 0.62, blue: 0.90) }
+    /// "保留小工具内操作"总开关
+    private var interactions: Bool { ShortcutStore.shared.loadKeepInteractions() }
 
     private var level: CGFloat {
         entry.goal <= 0 ? 0 : min(1, CGFloat(entry.count) / CGFloat(entry.goal))
@@ -101,15 +103,25 @@ struct WaterEntryView: View {
         }
     }
 
+    /// 开关关闭时按钮置灰不可点
+    @ViewBuilder
     private func roundButton(icon: String, intent: some AppIntent) -> some View {
-        Button(intent: intent) {
+        if interactions {
+            Button(intent: intent) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(isDark ? Color.black : Color.white)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(ink))
+            }
+            .buttonStyle(.plain)
+        } else {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(isDark ? Color.black : Color.white)
+                .foregroundStyle(ink.opacity(0.3))
                 .frame(width: 34, height: 34)
-                .background(Circle().fill(ink))
+                .background(Circle().fill(ink.opacity(0.12)))
         }
-        .buttonStyle(.plain)
     }
 }
 
