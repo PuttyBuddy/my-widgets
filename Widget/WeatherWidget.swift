@@ -215,7 +215,7 @@ struct WeatherEntryView: View {
                 Text("UVI \(data.uvText)")
                     .font(.system(size: 11, weight: .bold))
                     .monospacedDigit()
-                UVBar(value: data.uvIndex, ink: .primary, sub: .secondary)
+                UVIBar(value: data.uvIndex, ink: .primary, sub: .secondary)
                     .frame(width: 46, height: 12)
             }
         }

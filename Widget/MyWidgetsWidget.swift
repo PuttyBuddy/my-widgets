@@ -159,31 +159,33 @@ struct BubbleIconLayout: View {
     var body: some View {
         GeometryReader { geo in
             let side = min(geo.size.width, geo.size.height)
-            let cx = geo.size.width / 2
-            let cy = geo.size.height / 2
+            let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
             ZStack {
-                if let center = shortcuts.first {
-                    bubbleTile(center, size: side * 0.36)
-                        .position(x: cx, y: cy)
+                if let first = shortcuts.first {
+                    bubbleTile(first, size: side * 0.36)
+                        .position(center)
                 }
-                let ring1 = Array(shortcuts.dropFirst().prefix(8))
-                ForEach(Array(ring1.enumerated()), id: \.element.id) { pair in
-                    let angle = (Double(pair.offset) / Double(max(1, ring1.count))) * 2 * .pi - .pi / 2
-                    let radius = side * 0.335
-                    bubbleTile(pair.element, size: side * 0.21)
-                        .position(x: cx + CGFloat(cos(angle)) * radius,
-                                  y: cy + CGFloat(sin(angle)) * radius)
+                ForEach(ringItems(from: 1, capacity: 8), id: \.0.id) { item in
+                    bubbleTile(item.0, size: side * 0.21)
+                        .position(ringPosition(center, index: item.1, count: 8, radius: side * 0.335))
                 }
-                let ring2 = Array(shortcuts.dropFirst(9).prefix(12))
-                ForEach(Array(ring2.enumerated()), id: \.element.id) { pair in
-                    let angle = (Double(pair.offset) / Double(max(1, ring2.count))) * 2 * .pi - .pi / 2
-                    let radius = side * 0.47
-                    bubbleTile(pair.element, size: side * 0.17)
-                        .position(x: cx + CGFloat(cos(angle)) * radius,
-                                  y: cy + CGFloat(sin(angle)) * radius)
+                ForEach(ringItems(from: 9, capacity: 12), id: \.0.id) { item in
+                    bubbleTile(item.0, size: side * 0.17)
+                        .position(ringPosition(center, index: item.1, count: 12, radius: side * 0.47))
                 }
             }
         }
+    }
+
+    private func ringItems(from start: Int, capacity: Int) -> [(Shortcut, Int)] {
+        Array(shortcuts.dropFirst(start).prefix(capacity).enumerated())
+            .map { ($0.element, $0.offset) }
+    }
+
+    private func ringPosition(_ center: CGPoint, index: Int, count: Int, radius: CGFloat) -> CGPoint {
+        let angle = (Double(index) / Double(max(1, count))) * 2 * .pi - .pi / 2
+        return CGPoint(x: center.x + CGFloat(cos(angle)) * radius,
+                       y: center.y + CGFloat(sin(angle)) * radius)
     }
 
     private func bubbleTile(_ s: Shortcut, size: CGFloat) -> some View {
